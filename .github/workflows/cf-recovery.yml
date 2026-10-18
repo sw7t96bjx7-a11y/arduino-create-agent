@@ -1,0 +1,118 @@
+name: Cloudflare Recovery Helper
+
+on:
+  workflow_dispatch:
+    inputs:
+      domains:
+        description: 'Comma-separated domains to check (e.g. example.com,example2.com)'
+        required: true
+        default: "wachowskiprotocolsystems.com,hvacrsmart.com"
+      create_issue:
+        description: 'Open a GitHub issue with the report (true/false)'
+        required: true
+        default: 'true'
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y whois dnsutils jq curl
+
+      - name: Prepare domains
+        id: prep
+        run: |
+          IFS=',' read -ra D <<< "${{ github.event.inputs.domains }}"
+          printf "%s\n" "${D[@]}" > domains.txt
+          echo "domains=domains.txt" >> $GITHUB_OUTPUT
+
+      - name: Collect WHOIS and DNS
+        id: collect
+        run: |
+          mkdir -p recovery-report
+          while read -r domain; do
+            safe=$(echo "$domain" | tr '/' '_' | tr -c '[:alnum:]._-' '_')
+            echo "=== WHOIS: $domain ===" > recovery-report/${safe}.txt
+            whois "$domain" >> recovery-report/${safe}.txt 2>&1 || true
+            echo "" >> recovery-report/${safe}.txt
+            echo "=== DIG NS: $domain ===" >> recovery-report/${safe}.txt
+            dig NS +short "$domain" >> recovery-report/${safe}.txt 2>&1 || true
+            echo "" >> recovery-report/${safe}.txt
+            echo "=== DIG A (root): $domain ===" >> recovery-report/${safe}.txt
+            dig A +short "$domain" >> recovery-report/${safe}.txt 2>&1 || true
+            echo "" >> recovery-report/${safe}.txt
+            echo "=== DIG TXT (dkim/spf) for $domain ===" >> recovery-report/${safe}.txt
+            dig TXT +short "$domain" >> recovery-report/${safe}.txt 2>&1 || true
+          done < domains.txt
+          tar -czf recovery-report.tar.gz recovery-report
+          ls -l recovery-report.tar.gz
+
+      - name: Query Cloudflare (if CF_API_TOKEN)
+        if: secrets.CF_API_TOKEN != ''
+        id: cloudflare
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          mkdir -p cf-data
+          while read -r domain; do
+            safe=$(echo "$domain" | tr '/' '_' | tr -c '[:alnum:]._-' '_')
+            echo "=== Cloudflare zone info for $domain ===" > cf-data/${safe}.txt
+            # Query zones by name
+            curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=${domain}" \
+              -H "Authorization: Bearer $CF_API_TOKEN" \
+              -H "Content-Type: application/json" | jq '.' >> cf-data/${safe}.txt || true
+            echo "" >> cf-data/${safe}.txt
+            # If zone found, fetch more details
+            ZONE_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=${domain}" -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" | jq -r '.result[0].id')
+            if [ -n "$ZONE_ID" ] && [ "$ZONE_ID" != "null" ]; then
+              echo "Zone ID: $ZONE_ID" >> cf-data/${safe}.txt
+              curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$ZONE_ID" -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" | jq '.' >> cf-data/${safe}.txt || true
+              curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" | jq '{count: .result_info.count, records: .result[] | {type: .type, name: .name, content: .content, proxied: .proxied}}' >> cf-data/${safe}.txt || true
+            fi
+          done < domains.txt
+          tar -czf cf-data.tar.gz cf-data
+          ls -l cf-data.tar.gz
+
+      - name: Build combined report
+        id: make-report
+        run: |
+          mkdir -p report
+          echo "Cloudflare Recovery Report" > report/summary.txt
+          echo "Generated at: $(date -u)" >> report/summary.txt
+          echo "" >> report/summary.txt
+          echo "Domains checked:" >> report/summary.txt
+          cat domains.txt >> report/summary.txt
+          echo "" >> report/summary.txt
+          echo "Included files: per-domain whois/dig output and Cloudflare API results (if CF_API_TOKEN provided)." >> report/summary.txt
+          cp recovery-report/* report/ 2>/dev/null || true
+          cp cf-data/* report/ 2>/dev/null || true
+          tar -czf final-report.tar.gz report || true
+          ls -l final-report.tar.gz
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-recovery-report
+          path: |
+            final-report.tar.gz
+            recovery-report.tar.gz
+            cf-data.tar.gz
+
+      - name: Create issue with summary (optional)
+        if: ${{ github.event.inputs.create_issue == 'true' }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const domains = `${{ github.event.inputs.domains }}`.split(',').map(d => d.trim());
+            let body = `Cloudflare recovery report generated for: ${domains.join(', ')}\n\nAttached artifact: cloudflare-recovery-report\n\nSteps taken: whois, dig, Cloudflare zone checks (if CF_API_TOKEN provided).\n\nFiles in artifact: per-domain whois/dig output and Cloudflare API results (if available).\n\nIMPORTANT: Review the artifact before sharing with third parties; it may contain registrar contact info.`;
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Cloudflare recovery report: ${domains.join(', ')}`,
+              body,
+            });
+            return issue.data.html_url
