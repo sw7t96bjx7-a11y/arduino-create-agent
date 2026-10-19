@@ -17,6 +17,10 @@ on:
   workflow_dispatch:
   repository_dispatch:
 
+permissions:
+  issues: write
+  contents: read
+
 env:
   CONFIGURATIONS_FOLDER: .github/label-configuration-files
   CONFIGURATIONS_ARTIFACT: label-configuration-files
