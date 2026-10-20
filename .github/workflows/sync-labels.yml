@@ -1,6 +1,10 @@
 # Source: https://github.com/arduino/tooling-project-assets/blob/main/workflow-templates/sync-labels.md
 name: Sync Labels
 
+permissions:
+  contents: read
+  issues: write
+
 # See: https://docs.github.com/en/actions/reference/events-that-trigger-workflows
 on:
   push:
@@ -131,7 +135,7 @@ jobs:
 
       - name: Sync labels
         env:
-          GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACCESS_TOKEN: ${{ github.token }}
         run: |
           # See: https://github.com/Financial-Times/github-label-sync
           github-label-sync \
