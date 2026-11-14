@@ -217,6 +217,9 @@ func (t *Tools) install(ctx context.Context, path, url, checksum string) (*tools
 		return nil, err
 	}
 	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("tool download failed: HTTP %s", res.Status)
+	}
 
 	var buffer bytes.Buffer
 

@@ -23,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arduino/arduino-create-agent/config"
 	"github.com/arduino/arduino-create-agent/gen/tools"
 	"github.com/arduino/arduino-create-agent/globals"
 	"github.com/arduino/arduino-create-agent/index"
@@ -45,7 +44,7 @@ func TestTools(t *testing.T) {
 
 	indexURL := "https://downloads.arduino.cc/packages/package_index.json"
 	// Instantiate Index
-	Index := index.Init(indexURL, config.GetDataDir())
+	Index := index.Init(indexURL, paths.New(t.TempDir()))
 
 	service := pkgs.New(Index, tmp, "replace", utilities.MustParseRsaPublicKey([]byte(globals.ArduinoSignaturePubKey)))
 
@@ -126,7 +125,7 @@ func TestEvilFilename(t *testing.T) {
 
 	indexURL := "https://downloads.arduino.cc/packages/package_index.json"
 	// Instantiate Index
-	Index := index.Init(indexURL, config.GetDataDir())
+	Index := index.Init(indexURL, paths.New(t.TempDir()))
 
 	service := pkgs.New(Index, tmp, "replace", utilities.MustParseRsaPublicKey([]byte(globals.ArduinoSignaturePubKey)))
 
@@ -195,7 +194,7 @@ func TestInstalledHead(t *testing.T) {
 
 	indexURL := "https://downloads.arduino.cc/packages/package_index.json"
 	// Instantiate Index
-	Index := index.Init(indexURL, config.GetDataDir())
+	Index := index.Init(indexURL, paths.New(t.TempDir()))
 
 	service := pkgs.New(Index, tmp, "replace", utilities.MustParseRsaPublicKey([]byte(globals.ArduinoSignaturePubKey)))
 

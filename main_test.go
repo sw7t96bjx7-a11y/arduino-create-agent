@@ -28,13 +28,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arduino/arduino-create-agent/config"
 	"github.com/arduino/arduino-create-agent/gen/tools"
 	"github.com/arduino/arduino-create-agent/globals"
 	"github.com/arduino/arduino-create-agent/index"
 	"github.com/arduino/arduino-create-agent/upload"
 	"github.com/arduino/arduino-create-agent/utilities"
 	v2 "github.com/arduino/arduino-create-agent/v2"
+	"github.com/arduino/go-paths-helper"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -115,15 +115,16 @@ func TestUploadHandlerAgainstBase64WithoutPaddingMustFail(t *testing.T) {
 }
 
 func TestInstallToolV2(t *testing.T) {
-
+	dataDir := paths.New(t.TempDir())
 	indexURL := "https://downloads.arduino.cc/packages/package_index.json"
 	// Instantiate Index
-	Index := index.Init(indexURL, config.GetDataDir())
+	Index := index.Init(indexURL, dataDir)
 
 	r := gin.New()
-	goa := v2.Server(config.GetDataDir().String(), Index, utilities.MustParseRsaPublicKey([]byte(globals.ArduinoSignaturePubKey)))
+	goa := v2.Server(dataDir.String(), Index, utilities.MustParseRsaPublicKey([]byte(globals.ArduinoSignaturePubKey)))
 	r.Any("/v2/*path", gin.WrapH(goa))
 	ts := httptest.NewServer(r)
+	defer ts.Close()
 
 	type test struct {
 		request      tools.ToolPayload
@@ -201,6 +202,7 @@ func TestInstallToolV2(t *testing.T) {
 				resp, err := http.Post(ts.URL+"/v2/pkgs/tools/installed", encoding, bytes.NewBuffer(payload))
 				require.NoError(t, err)
 				body, err := io.ReadAll(resp.Body)
+				resp.Body.Close()
 				require.NoError(t, err)
 				require.Contains(t, string(body), test.responseBody)
 				require.Equal(t, test.responseCode, resp.StatusCode)
@@ -210,17 +212,20 @@ func TestInstallToolV2(t *testing.T) {
 }
 
 func TestInstalledHead(t *testing.T) {
+	dataDir := paths.New(t.TempDir())
 	indexURL := "https://downloads.arduino.cc/packages/package_index.json"
 	// Instantiate Index
-	Index := index.Init(indexURL, config.GetDataDir())
+	Index := index.Init(indexURL, dataDir)
 
 	r := gin.New()
-	goa := v2.Server(config.GetDataDir().String(), Index, utilities.MustParseRsaPublicKey([]byte(globals.ArduinoSignaturePubKey)))
+	goa := v2.Server(dataDir.String(), Index, utilities.MustParseRsaPublicKey([]byte(globals.ArduinoSignaturePubKey)))
 	r.Any("/v2/*path", gin.WrapH(goa))
 	ts := httptest.NewServer(r)
+	defer ts.Close()
 
 	resp, err := http.Head(ts.URL + "/v2/pkgs/tools/installed")
 	require.NoError(t, err)
+	defer resp.Body.Close()
 	require.NotEqual(t, resp.StatusCode, http.StatusMethodNotAllowed)
 	require.Equal(t, resp.StatusCode, http.StatusOK)
 }
