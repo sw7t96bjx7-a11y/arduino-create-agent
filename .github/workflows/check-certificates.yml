@@ -1,6 +1,9 @@
 # Source: https://github.com/arduino/tooling-project-assets/blob/main/workflow-templates/check-certificates.md
 name: Check Certificates
 
+permissions:
+  contents: read
+
 # See: https://docs.github.com/en/actions/reference/events-that-trigger-workflows
 on:
   push:
@@ -79,7 +82,7 @@ jobs:
             :warning::warning::warning::warning:
           SLACK_COLOR: danger
           MSG_MINIMAL: true
-        uses: rtCamp/action-slack-notify@v2
+        uses: rtCamp/action-slack-notify@06cc13f74fa8d4d2296c09455d91e9453e4025f4 # v2
 
       - name: Get days remaining before certificate expiration date
         env:
@@ -151,4 +154,4 @@ jobs:
             :warning::warning::warning::warning:
           SLACK_COLOR: danger
           MSG_MINIMAL: true
-        uses: rtCamp/action-slack-notify@v2
+        uses: rtCamp/action-slack-notify@06cc13f74fa8d4d2296c09455d91e9453e4025f4 # v2

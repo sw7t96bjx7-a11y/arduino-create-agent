@@ -28,13 +28,13 @@ type LogAdapter struct {
 }
 
 // Log is the log function
-func (a LogAdapter) Log(keyvals ...interface{}) error {
+func (a LogAdapter) Log(keyvals ...any) error {
 	n := (len(keyvals) + 1) / 2
 	if len(keyvals)%2 != 0 {
 		keyvals = append(keyvals, "MISSING")
 	}
 	var fm bytes.Buffer
-	vals := make([]interface{}, n)
+	vals := make([]any, n)
 	for i := 0; i < len(keyvals); i += 2 {
 		k := keyvals[i]
 		v := keyvals[i+1]

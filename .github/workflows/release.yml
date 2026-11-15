@@ -6,8 +6,7 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+*"
 
 permissions:
-  contents: write
-  id-token: write # This is required for requesting the JWT
+  contents: read
 
 env:
   # As defined by the Taskfile's PROJECT_NAME variable
@@ -22,22 +21,25 @@ env:
   AC_PASSWORD: ${{ secrets.AC_PASSWORD }} # used by gon
   AC_PROVIDER: ${{ secrets.AC_PROVIDER }} # used by gon
   # See: https://github.com/actions/setup-go/tree/v3#readme
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.27.4"
 
 jobs:
   # The build job is responsible for: configuring the environment, testing and compiling process
   build:
+    permissions:
+      contents: read
+      id-token: write
     outputs:
       prerelease: ${{ steps.prerelease.outputs.IS_PRE }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, windows-2019, macos-13]
+        os: [ubuntu-22.04, windows-2022, macos-15-intel]
         arch: [amd64]
         include:
-          - os: windows-2019
+          - os: windows-2022
             arch: 386
             ext: ".exe"
-          - os: windows-2019
+          - os: windows-2022
             ext: ".exe"
 
     defaults:
@@ -69,10 +71,12 @@ jobs:
         run: git config --global core.autocrlf false
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
 
@@ -80,7 +84,7 @@ jobs:
         run: go install github.com/sanbornm/go-selfupdate/...@latest
 
       - name: Install Taskfile
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2
         with:
           version: "3.x"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -93,18 +97,18 @@ jobs:
         # rsrc will produce a *.syso file that should get automatically recognized by go build command and linked into an executable.
       - name: Download tool to embed manifest in win binary
         run: go install github.com/akavel/rsrc@latest
-        if: matrix.os == 'windows-2019'
+        if: matrix.os == 'windows-2022'
 
         # building the agent for win requires a different task because of an extra flag
       - name: Build the Agent for win32
         env:
           GOARCH: 386 # 32bit architecture (for support)
         run: task go:build-win
-        if: matrix.os == 'windows-2019' && matrix.arch == '386'
+        if: matrix.os == 'windows-2022' && matrix.arch == '386'
 
       - name: Build the Agent for win64
         run: task go:build-win # GOARCH=amd64 by default on the runners
-        if: matrix.os == 'windows-2019' && matrix.arch == 'amd64'
+        if: matrix.os == 'windows-2022' && matrix.arch == 'amd64'
 
       - name: Build the Agent for macos amd64
         env:
@@ -115,7 +119,7 @@ jobs:
         run: |
           task go:build
           mv ${{ env.PROJECT_NAME }} ${{ env.PROJECT_NAME }}_amd64
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-15-intel'
 
       - name: Build the Agent for macos arm64
         env:
@@ -127,13 +131,13 @@ jobs:
         run: |
           task go:build
           mv ${{ env.PROJECT_NAME }} ${{ env.PROJECT_NAME }}_arm64
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-15-intel'
 
       - name: Create universal macos executable
         run: |
           lipo -create -output ${{ env.PROJECT_NAME }} ${{ env.PROJECT_NAME }}_amd64 ${{ env.PROJECT_NAME }}_arm64
           rm ${{ env.PROJECT_NAME }}_amd64 ${{ env.PROJECT_NAME }}_arm64
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-15-intel'
 
         # this will create `public/` dir with compressed full bin (<version>/<os>-<arch>.gz) and a json file
       - name: Create autoupdate files
@@ -145,14 +149,14 @@ jobs:
         run: |
           cp darwin-amd64.json darwin-arm64.json
           cp ${TAG_VERSION}/darwin-amd64.gz ${TAG_VERSION}/darwin-arm64.gz
-        if: matrix.os == 'macos-13' && steps.prerelease.outputs.IS_PRE != 'true'
+        if: matrix.os == 'macos-15-intel' && steps.prerelease.outputs.IS_PRE != 'true'
 
       - name: Create autoupdate files for win32
         run: go-selfupdate -platform windows-${{ matrix.arch }} ${{ env.PROJECT_NAME }}${{ matrix.ext }} ${TAG_VERSION}
-        if: matrix.arch == '386' && matrix.os == 'windows-2019' && steps.prerelease.outputs.IS_PRE != 'true'
+        if: matrix.arch == '386' && matrix.os == 'windows-2022' && steps.prerelease.outputs.IS_PRE != 'true'
 
       - name: configure aws credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           role-session-name: "github_${{ env.PROJECT_NAME }}"
@@ -165,7 +169,7 @@ jobs:
         if: steps.prerelease.outputs.IS_PRE != 'true'
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ env.PROJECT_NAME }}-${{ matrix.os }}-${{ matrix.arch }}
           path: |
@@ -180,21 +184,22 @@ jobs:
       matrix:
         arch: [amd64, arm64]
 
-    runs-on: macos-13
+    runs-on: macos-15-intel
     env:
       EXE_PATH: "skel/ArduinoCloudAgent.app/Contents/MacOS/"
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           repository: "bcmi-labs/arduino-create-agent-installer" # the repo which contains the bundle structure and icons
           token: ${{ secrets.ARDUINO_CREATE_AGENT_CI_PAT }}
 
       - name: Download artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ${{ env.PROJECT_NAME }}-macos-13-amd64 # if we want to support darwin-arm64 in the future for real this has to change.
+          name: ${{ env.PROJECT_NAME }}-macos-15-intel-amd64 # if we want to support darwin-arm64 in the future for real this has to change.
           path: ${{ env.EXE_PATH }}
 
       - name: Remove placeholder file
@@ -236,7 +241,7 @@ jobs:
         run: tar -cvf ArduinoCloudAgent.app_${{ matrix.arch }}.tar -C skel/ .
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           if-no-files-found: error
           name: ArduinoCloudAgent.app_${{ matrix.arch }}
@@ -244,6 +249,9 @@ jobs:
 
   # The notarize-macos job will download the macos bundle from the previous job, sign, notarize and re-upload it, uploading it also on s3 download servers for the autoupdate.
   notarize-macos:
+    permissions:
+      contents: read
+      id-token: write
     name: Notarize bundle
 
     # for now they are exaclty the same
@@ -251,7 +259,7 @@ jobs:
       matrix:
         arch: [amd64, arm64]
 
-    runs-on: macos-13
+    runs-on: macos-15-intel
     env:
       GON_PATH: ${{ github.workspace }}/gon
     needs: [build, create-macos-bundle]
@@ -259,12 +267,12 @@ jobs:
 
     steps:
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Download artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ArduinoCloudAgent.app_${{ matrix.arch }}
 
@@ -291,8 +299,9 @@ jobs:
             "${{ env.KEYCHAIN }}"
 
       - name: Install gon for code signing
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           repository: darkvertex/gon #this fork has support for --deep notarization
           path: ${{ env.GON_PATH }}
           ref: deep_sign_support
@@ -353,7 +362,7 @@ jobs:
           gon -log-level=debug -log-json "${{ env.GON_CONFIG_PATH }}"
 
       - name: configure aws credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           role-session-name: "github_${{ env.PROJECT_NAME }}"
@@ -380,7 +389,7 @@ jobs:
         if: ${{ needs.build.outputs.prerelease != 'true' }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ArduinoCloudAgent.app_${{ matrix.arch }}_notarized
           path: ArduinoCreateAgent.app_${{ matrix.arch }}_notarized.zip
@@ -399,20 +408,20 @@ jobs:
     strategy:
       fail-fast: false # if one os is failing continue nonetheless
       matrix: # used to generate installers for different OS and not for runs-on
-        os: [ubuntu-22.04, windows-2019]
+        os: [ubuntu-22.04, windows-2022]
         arch: [amd64]
         include:
           - os: ubuntu-22.04
             platform-name: linux
             installbuilder-name: linux-x64
             installer-extension: .run
-          - os: windows-2019
+          - os: windows-2022
             arch: 386
             platform-name: windows
             installbuilder-name: windows
             extension: .exe
             installer-extension: .exe
-          - os: windows-2019
+          - os: windows-2022
             platform-name: windows
             installbuilder-name: windows
             extension: .exe
@@ -423,13 +432,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           repository: "bcmi-labs/arduino-create-agent-installer" # the repo which contains install.xml
           token: ${{ secrets.ARDUINO_CREATE_AGENT_CI_PAT }}
 
       - name: Download artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ${{ env.PROJECT_NAME }}-${{ matrix.os }}-${{ matrix.arch }}
           path: artifacts/${{ matrix.platform-name }}/ # path expected by installbuilder
@@ -453,7 +463,7 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ArduinoCloudAgent-${{ matrix.platform-name }}-${{ matrix.arch }}
           path: ArduinoCloudAgent*
@@ -480,7 +490,7 @@ jobs:
 
     steps:
       - name: Download artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ArduinoCloudAgent-windows-${{ matrix.arch }}
 
@@ -496,7 +506,7 @@ jobs:
           "${{ env.SIGNTOOL_PATH }}" sign -d "Arduino Cloud Agent" -f ${{ env.INSTALLER_CERT_WINDOWS_CER}} -csp "eToken Base Cryptographic Provider" -k "[{{${{ env.CERT_PASSWORD }}}}]=${{ env.CONTAINER_NAME }}" -fd sha256 -tr http://timestamp.digicert.com -td SHA256 -v "ArduinoCloudAgent-${GITHUB_REF##*/}-windows-${{ matrix.arch }}-installer.exe"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           if-no-files-found: error
           name: ArduinoCloudAgent-windows-${{ matrix.arch }}-signed
@@ -513,16 +523,17 @@ jobs:
       matrix:
         arch: [amd64]
 
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - name: Checkout repo with icons/background
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           repository: "bcmi-labs/arduino-create-agent-installer" # the repo which contains the icons/background
           token: ${{ secrets.ARDUINO_CREATE_AGENT_CI_PAT }}
 
       - name: Download artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ArduinoCloudAgent.app_${{ matrix.arch }}_notarized
           path: ArduinoCloudAgent.app
@@ -598,25 +609,29 @@ jobs:
         run: tar -cvf ArduinoCloudAgent-${GITHUB_REF##*/}-osx-${{ matrix.arch }}-installer.tar ArduinoCloudAgent-${GITHUB_REF##*/}-osx-${{ matrix.arch }}-installer.dmg
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ArduinoCloudAgent-osx-${{ matrix.arch }}
           path: ArduinoCloudAgent*.tar
           if-no-files-found: error
 
   create-release:
+    permissions:
+      contents: write
+      id-token: write
     runs-on: ubuntu-22.04
     environment: production
     needs: [build, generate-sign-dmg, sign-windows]
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0 # fetch all history for the create changelog step to work properly
 
       - name: Download artifact
-        uses: actions/download-artifact@v4 # download all the artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4; download all the artifacts
 
       #  mandatory step because upload-release-action does not support multiple folders
       - name: prepare artifacts for the release
@@ -630,17 +645,17 @@ jobs:
 
       - name: VirusTotal Scan
         id: virustotal_step
-        uses: crazy-max/ghaction-virustotal@v4
+        uses: crazy-max/ghaction-virustotal@d34968c958ae283fe976efed637081b9f9dcf74f # v4
         with:
           vt_api_key: ${{ secrets.VIRUSTOTAL_API_KEY }}
           update_release_body: false # `true` won't work because trigger type is not release
           files: |
             release/*.exe
-            ${{ env.PROJECT_NAME }}-windows-2019-386/${{ env.PROJECT_NAME }}.exe
-            ${{ env.PROJECT_NAME }}-windows-2019-amd64/${{ env.PROJECT_NAME }}.exe
+            ${{ env.PROJECT_NAME }}-windows-2022-386/${{ env.PROJECT_NAME }}.exe
+            ${{ env.PROJECT_NAME }}-windows-2022-amd64/${{ env.PROJECT_NAME }}.exe
 
       - name: Create changelog
-        uses: arduino/create-changelog@v1
+        uses: arduino/create-changelog@71b5e9ca06b254a7f0bea45dfd01757a6fdccfc5 # v1
         with:
           tag-regex: '^[0-9]+\.[0-9]+\.[0-9]+.*$'
           filter-regex: '^\[(skip|changelog)[ ,-](skip|changelog)\].*'
@@ -660,7 +675,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Github Release and upload artifacts
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           body: ${{ steps.release_body.outputs.RBODY}}
@@ -671,7 +686,7 @@ jobs:
           artifacts: release/*
 
       - name: configure aws credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           role-session-name: "github_${{ env.PROJECT_NAME }}"

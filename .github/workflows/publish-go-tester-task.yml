@@ -1,6 +1,9 @@
 # Source: https://github.com/arduino/tooling-project-assets/blob/main/workflow-templates/publish-go-tester-task.md
 name: Publish Tester Build
 
+permissions:
+  contents: read
+
 # See: https://docs.github.com/en/free-pro-team@latest/actions/reference/events-that-trigger-workflows
 on:
   create:
@@ -31,7 +34,7 @@ on:
 
 env:
   PROJECT_NAME: arduino-cloud-agent
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.27.4"
 
 jobs:
   run-determination:
@@ -65,10 +68,10 @@ jobs:
     #use the strategy instead because we still use the native build
     strategy:
       matrix:
-        os: [ubuntu-22.04, windows-2019, macos-13]
+        os: [ubuntu-22.04, windows-2022, macos-15-intel]
         arch: [-amd64]
         include:
-          - os: windows-2019
+          - os: windows-2022
             arch: -386
 
     defaults:
@@ -86,15 +89,17 @@ jobs:
         run: git config --global core.autocrlf false
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           version: 3.x
@@ -149,7 +154,7 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ env.PROJECT_NAME}}-${{ matrix.os }}${{ matrix.arch }}
           path: |

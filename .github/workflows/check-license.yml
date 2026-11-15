@@ -1,6 +1,9 @@
 # Source: https://github.com/arduino/tooling-project-assets/blob/main/workflow-templates/check-license.md
 name: Check License
 
+permissions:
+  contents: read
+
 env:
   EXPECTED_LICENSE_FILENAME: LICENSE.txt
   # SPDX identifier: https://spdx.org/licenses/
@@ -63,10 +66,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Install Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1
         with:
           ruby-version: ruby # Install latest version
 

@@ -17,17 +17,17 @@ package upload
 
 // Logger is an interface implemented by most loggers (like logrus)
 type Logger interface {
-	Debug(args ...interface{})
-	Info(args ...interface{})
+	Debug(args ...any)
+	Info(args ...any)
 }
 
-func debug(l Logger, args ...interface{}) {
+func debug(l Logger, args ...any) {
 	if l != nil {
 		l.Debug(args...)
 	}
 }
 
-func info(l Logger, args ...interface{}) {
+func info(l Logger, args ...any) {
 	if l != nil {
 		l.Info(args...)
 	}

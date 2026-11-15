@@ -30,6 +30,7 @@ message = []
 def test_ws_connection(socketio):
     print('my sid is', socketio.sid)
     assert socketio.sid is not None
+    assert socketio.transport() == "websocket"
 
 
 @pytest.mark.skipif(

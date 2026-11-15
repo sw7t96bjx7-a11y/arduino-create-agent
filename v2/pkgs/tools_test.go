@@ -160,9 +160,9 @@ func TestEvilFilename(t *testing.T) {
 
 	toolsTemplate := tools.ToolPayload{
 		// We'll replace the name directly in the test
-		Checksum:  strpoint("SHA-256:1ae54999c1f97234a5c603eb99ad39313b11746a4ca517269a9285afa05f9100"),
-		Signature: strpoint("382898a97b5a86edd74208f10107d2fecbf7059ffe9cc856e045266fb4db4e98802728a0859cfdcda1c0b9075ec01e42dbea1f430b813530d5a6ae1766dfbba64c3e689b59758062dc2ab2e32b2a3491dc2b9a80b9cda4ae514fbe0ec5af210111b6896976053ab76bac55bcecfcececa68adfa3299e3cde6b7f117b3552a7d80ca419374bb497e3c3f12b640cf5b20875416b45e662fc6150b99b178f8e41d6982b4c0a255925ea39773683f9aa9201dc5768b6fc857c87ff602b6a93452a541b8ec10ca07f166e61a9e9d91f0a6090bd2038ed4427af6251039fb9fe8eb62ec30d7b0f3df38bc9de7204dec478fb86f8eb3f71543710790ee169dce039d3e0"),
-		URL:       strpoint("http://downloads.arduino.cc/tools/bossac-1.7.0-arduino3-linux64.tar.gz"),
+		Checksum:  new("SHA-256:1ae54999c1f97234a5c603eb99ad39313b11746a4ca517269a9285afa05f9100"),
+		Signature: new("382898a97b5a86edd74208f10107d2fecbf7059ffe9cc856e045266fb4db4e98802728a0859cfdcda1c0b9075ec01e42dbea1f430b813530d5a6ae1766dfbba64c3e689b59758062dc2ab2e32b2a3491dc2b9a80b9cda4ae514fbe0ec5af210111b6896976053ab76bac55bcecfcececa68adfa3299e3cde6b7f117b3552a7d80ca419374bb497e3c3f12b640cf5b20875416b45e662fc6150b99b178f8e41d6982b4c0a255925ea39773683f9aa9201dc5768b6fc857c87ff602b6a93452a541b8ec10ca07f166e61a9e9d91f0a6090bd2038ed4427af6251039fb9fe8eb62ec30d7b0f3df38bc9de7204dec478fb86f8eb3f71543710790ee169dce039d3e0"),
+		URL:       new("http://downloads.arduino.cc/tools/bossac-1.7.0-arduino3-linux64.tar.gz"),
 	}
 
 	for _, test := range tests {
@@ -204,8 +204,9 @@ func TestInstalledHead(t *testing.T) {
 	require.NoError(t, err)
 }
 
+//go:fix inline
 func strpoint(s string) *string {
-	return &s
+	return new(s)
 }
 
 func TestInstall(t *testing.T) {
@@ -233,7 +234,7 @@ func TestInstall(t *testing.T) {
 		{Name: "esptool_py", Version: "4.5.1", Packager: "arduino-test", URL: nil, Checksum: nil, Signature: nil},
 		{Name: "arduino-fwuploader", Version: "2.2.2", Packager: "arduino-test", URL: nil, Checksum: nil, Signature: nil},
 		// test download of a tool not present in index. the same archive is downloaded on linux/win/mac See https://github.com/arduino/arduino-create-agent/issues/980
-		{Name: "esptool", Version: "2.5.0-3-20ed2b9", Packager: "esp8266", URL: strpoint("https://github.com/earlephilhower/esp-quick-toolchain/releases/download/2.5.0-3/x86_64-linux-gnu.esptool-f80ae31.tar.gz"), Checksum: strpoint("SHA-256:bded1dca953377838b6086a9bcd40a1dc5286ba5f69f2372c22a1d1819baad24"), Signature: strpoint("852b58871419ce5e5633ecfaa72c0f0fa890ceb51164b362b8133bc0e3e003a21cec48935b8cdc078f4031219cbf17fb7edd9d7c9ca8ed85492911c9ca6353c9aa4691eb91fda99563a6bd49aeca0d9981fb05ec76e45c6024f8a6822862ad1e34ddc652fbbf4fa909887a255d4f087398ec386577efcec523c21203be3d10fc9e9b0f990a7536875a77dc2bc5cbffea7734b62238e31719111b718bacccebffc9be689545540e81d23b81caa66214376f58a0d6a45cf7efc5d3af62ab932b371628162fffe403906f41d5534921e5be081c5ac2ecc9db5caec03a105cc44b00ce19a95ad079843501eb8182e0717ce327867380c0e39d2b48698547fc1d0d66")},
+		{Name: "esptool", Version: "2.5.0-3-20ed2b9", Packager: "esp8266", URL: new("https://github.com/earlephilhower/esp-quick-toolchain/releases/download/2.5.0-3/x86_64-linux-gnu.esptool-f80ae31.tar.gz"), Checksum: new("SHA-256:bded1dca953377838b6086a9bcd40a1dc5286ba5f69f2372c22a1d1819baad24"), Signature: new("852b58871419ce5e5633ecfaa72c0f0fa890ceb51164b362b8133bc0e3e003a21cec48935b8cdc078f4031219cbf17fb7edd9d7c9ca8ed85492911c9ca6353c9aa4691eb91fda99563a6bd49aeca0d9981fb05ec76e45c6024f8a6822862ad1e34ddc652fbbf4fa909887a255d4f087398ec386577efcec523c21203be3d10fc9e9b0f990a7536875a77dc2bc5cbffea7734b62238e31719111b718bacccebffc9be689545540e81d23b81caa66214376f58a0d6a45cf7efc5d3af62ab932b371628162fffe403906f41d5534921e5be081c5ac2ecc9db5caec03a105cc44b00ce19a95ad079843501eb8182e0717ce327867380c0e39d2b48698547fc1d0d66")},
 	}
 
 	expectedFiles := map[string][]string{

@@ -19,6 +19,7 @@ import (
 	// we need this for the config ini in this package
 	_ "embed"
 	"os"
+	"path/filepath"
 
 	"github.com/arduino/go-paths-helper"
 	"github.com/go-ini/ini"
@@ -36,17 +37,30 @@ func CertsExist() bool {
 	return certFile.Exist() //if the certFile is not present we assume there are no certs
 }
 
-// GetDataDir returns the full path to the default Arduino Create Agent data directory.
+// GetDataDir returns the Arduino Create Agent data directory. An explicit
+// ARDUINO_CREATE_AGENT_DATA_DIR supports isolated tests and installations.
 func GetDataDir() *paths.Path {
-	userDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Panicf("Could not get user dir: %s", err)
-	}
-	dataDir := paths.New(userDir, ".arduino-create")
+	dataDir := dataDirPath()
 	if err := dataDir.MkdirAll(); err != nil {
 		log.Panicf("Could not create data dir: %s", err)
 	}
 	return dataDir
+}
+
+// Resolve the location separately so the default can be tested without creating
+// directories in the current user's home.
+func dataDirPath() *paths.Path {
+	if override, supplied := os.LookupEnv("ARDUINO_CREATE_AGENT_DATA_DIR"); supplied {
+		if override == "" || !filepath.IsAbs(override) {
+			log.Panic("ARDUINO_CREATE_AGENT_DATA_DIR must be a nonempty absolute path")
+		}
+		return paths.New(override)
+	}
+	userDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Panicf("Could not get user dir: %s", err)
+	}
+	return paths.New(userDir, ".arduino-create")
 }
 
 // GetLogsDir return the directory where logs are saved
@@ -65,6 +79,20 @@ func LogsIsEmpty() bool {
 
 // GetDefaultConfigDir returns the full path to the default Arduino Create Agent configuration directory.
 func GetDefaultConfigDir() *paths.Path {
+	agentConfigDir := configDirPath()
+	if err := agentConfigDir.MkdirAll(); err != nil {
+		log.Panicf("Can't create config dir: %s", err)
+	}
+	return agentConfigDir
+}
+
+func configDirPath() *paths.Path {
+	if override, supplied := os.LookupEnv("ARDUINO_CREATE_AGENT_CONFIG_DIR"); supplied {
+		if override == "" || !filepath.IsAbs(override) {
+			log.Panic("ARDUINO_CREATE_AGENT_CONFIG_DIR must be a nonempty absolute path")
+		}
+		return paths.New(override)
+	}
 	// UserConfigDir returns the default root directory to use
 	// for user-specific configuration data. Users should create
 	// their own application-specific subdirectory within this
@@ -85,11 +113,7 @@ func GetDefaultConfigDir() *paths.Path {
 		log.Panicf("Can't get user home dir: %s", err)
 	}
 
-	agentConfigDir := paths.New(configDir, "ArduinoCreateAgent")
-	if err := agentConfigDir.MkdirAll(); err != nil {
-		log.Panicf("Can't create config dir: %s", err)
-	}
-	return agentConfigDir
+	return paths.New(configDir, "ArduinoCreateAgent")
 }
 
 // GetDefaultHomeDir returns the full path to the user's home directory.

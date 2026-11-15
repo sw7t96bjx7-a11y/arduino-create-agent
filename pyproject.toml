@@ -6,21 +6,13 @@ authors = ["Umberto Baldi <u.baldi@arduino.cc>", "Maurizio Branca <m.branca@ardu
 license = "GPLv2"
 
 [tool.poetry.dependencies]
-python = "^3.9"
-psutil = "^5.8.0"
-pytest = "^6.2.2"
+python = "^3.12"
+pytest = "^7.4.4"
 requests = "^2.25.1"
-invoke = "^1.5.0"
-asyncio = "^3.4.3"
-python-socketio = "^4"
-
-[tool.poetry.dev-dependencies]
+# The agent uses Socket.IO protocol 4 / Engine.IO protocol 3.
+# python-socketio 5 is not compatible with the existing Go server.
+python-socketio = { version = "^4.6.1", extras = ["client"] }
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.pytest.ini_options]
-filterwarnings = [
-    "ignore::DeprecationWarning:invoke.loader" # https://github.com/pyinvoke/invoke/issues/675
-]
