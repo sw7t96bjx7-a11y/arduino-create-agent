@@ -1,9 +1,13 @@
 # Source: https://github.com/arduino/tooling-project-assets/blob/main/workflow-templates/check-go-dependencies-task.md
 name: Check Go Dependencies
 
+permissions:
+  contents: read
+
 env:
   # See: https://github.com/actions/setup-go/tree/v3#readme
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.27.4"
+  # Keep default build tags so license checks include desktop dependencies.
 
 # See: https://docs.github.com/actions/using-workflows/events-that-trigger-workflows
 on:
@@ -68,29 +72,30 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           submodules: recursive
 
       # This is required to allow licensee/setup-licensed to install Licensed via Ruby gem.
       - name: Install Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1
         with:
           ruby-version: ruby # Install latest version
 
       - name: Install licensed
-        uses: licensee/setup-licensed@v1.3.2
+        uses: licensee/setup-licensed@0d52e575b3258417672be0dff2f115d7db8771d8 # v1.3.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           version: 5.x
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           version: 3.x
@@ -111,7 +116,7 @@ jobs:
       # Some might find it convenient to have CI generate the cache rather than setting up for it locally
       - name: Upload cache to workflow artifact
         if: failure() && steps.diff.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           if-no-files-found: error
           include-hidden-files: true
@@ -125,29 +130,30 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           submodules: recursive
 
       # This is required to allow licensee/setup-licensed to install Licensed via Ruby gem.
       - name: Install Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1
         with:
           ruby-version: ruby # Install latest version
 
       - name: Install licensed
-        uses: licensee/setup-licensed@v1.3.2
+        uses: licensee/setup-licensed@0d52e575b3258417672be0dff2f115d7db8771d8 # v1.3.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           version: 5.x
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           version: 3.x

@@ -196,14 +196,14 @@ type PLogger struct {
 }
 
 // Debug only sends messages if verbose is true (always true for now)
-func (l PLogger) Debug(args ...interface{}) {
+func (l PLogger) Debug(args ...any) {
 	if l.Verbose {
 		l.Info(args...)
 	}
 }
 
 // Info always send messages
-func (l PLogger) Info(args ...interface{}) {
+func (l PLogger) Info(args ...any) {
 	output := fmt.Sprint(args...)
 	log.Println(output)
 	send(map[string]string{uploadStatusStr: "Busy", "Msg": output})

@@ -107,7 +107,7 @@ func (sp *SerialPortList) List() {
 
 // Run is the main loop for port discovery and management
 func (sp *SerialPortList) Run() {
-	for retries := 0; retries < 10; retries++ {
+	for range 10 {
 		sp.runSerialDiscovery()
 
 		logrus.Errorf("Serial discovery stopped working, restarting it in 10 seconds...")

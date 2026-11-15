@@ -53,6 +53,17 @@ reviewed:
     - golang.org/x/crypto/sha3
     - golang.org/x/net/internal/socks
     - golang.org/x/net/proxy
+    # Reviewed Go BSD-3-Clause license plus unchanged Go PATENTS grant.
+    - golang.org/x/crypto/cast5
+    - golang.org/x/net/http2
+    - golang.org/x/net/http2/h2c
+    - golang.org/x/net/internal/httpsfv
+    - golang.org/x/text/internal/language
+    - golang.org/x/text/internal/language/compact
+    - golang.org/x/text/internal/tag
+    - golang.org/x/text/language
+    # Same license/README bundle as the existing compress package record.
+    - github.com/klauspost/compress/internal/le
 
 # Source: https://github.com/arduino/tooling-project-assets/blob/main/workflow-templates/assets/check-dependencies/AGPL-3.0/.licensed.yml
 allowed:

@@ -278,6 +278,11 @@ func loop() {
 		}
 	}
 
+	// Configure proxies before the package index makes its first HTTP request.
+	if err := configureProxies(*httpProxy, *httpsProxy); err != nil {
+		log.Panic(err)
+	}
+
 	if signatureKey == nil || len(*signatureKey) == 0 {
 		log.Panicf("signature public key should be set")
 	}
@@ -314,32 +319,6 @@ func loop() {
 	} else {
 		log.Println("Garbage collection is off. Memory use will grow unbounded. You WILL RUN OUT OF RAM unless you send in the gc command to manually force garbage collection. Lower CPU, but progressive memory footprint.")
 		debug.SetGCPercent(-1)
-	}
-
-	// If the httpProxy setting is set, use its value to override the
-	// HTTP_PROXY environment variable. Setting this environment
-	// variable ensures that all HTTP requests using net/http use this
-	// proxy server.
-	if *httpProxy != "" {
-		log.Printf("Setting HTTP_PROXY variable to %v", *httpProxy)
-		err := os.Setenv("HTTP_PROXY", *httpProxy)
-		if err != nil {
-			// The os.Setenv documentation doesn't specify how it can
-			// fail, so I don't know how to handle this error
-			// appropriately.
-			panic(err)
-		}
-	}
-
-	if *httpsProxy != "" {
-		log.Printf("Setting HTTPS_PROXY variable to %v", *httpProxy)
-		err := os.Setenv("HTTPS_PROXY", *httpProxy)
-		if err != nil {
-			// The os.Setenv documentation doesn't specify how it can
-			// fail, so I don't know how to handle this error
-			// appropriately.
-			panic(err)
-		}
 	}
 
 	// see if they provided a regex filter
@@ -422,6 +401,7 @@ func loop() {
 	//go d.run()
 
 	r := gin.New()
+	r.Use(loopbackHostGuard(*address))
 
 	socketHandler := wsHandler().ServeHTTP
 

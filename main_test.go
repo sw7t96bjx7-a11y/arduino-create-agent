@@ -111,7 +111,8 @@ func TestUploadHandlerAgainstBase64WithoutPaddingMustFail(t *testing.T) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Contains(t, string(body), "err with the payload. illegal base64 data at input")
+	require.Contains(t, string(body), "err with the payload.")
+	require.Contains(t, string(body), "illegal base64 data at input")
 }
 
 func TestInstallToolV2(t *testing.T) {

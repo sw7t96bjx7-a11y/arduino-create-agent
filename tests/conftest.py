@@ -15,46 +15,110 @@
 
 import os
 import platform
-import signal
+import shutil
+import socket
+import subprocess
 import time
+from http.client import HTTPConnection
 from pathlib import Path
 
 import pytest
-from invoke import Local
-from invoke.context import Context
+import requests
 import socketio as io
 
+
+def _require_available_test_port():
+    # Refuse to attach tests to an already-running agent on the fixed test port.
+    with socket.socket() as probe:
+        if platform.system() == "Windows":
+            # Windows may take longer than our timeout to refuse a connection
+            # to a free port. An exclusive bind checks availability directly.
+            try:
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+                probe.bind(("127.0.0.1", 8991))
+            except OSError:
+                pytest.fail("Port 8991 is unavailable; refusing to test an unrelated process.")
+            return
+
+        probe.settimeout(1)
+        try:
+            probe.connect(("127.0.0.1", 8991))
+        except ConnectionRefusedError:
+            pass
+        except OSError:
+            pytest.fail("Could not verify that the loopback test port is available.")
+        else:
+            pytest.fail("Port 8991 is already in use; refusing to test an unrelated process.")
+
+
 @pytest.fixture(scope="function")
-def agent(pytestconfig):
-    if platform.system() == "Windows":
-        agent = str(Path(pytestconfig.rootdir) / "arduino-cloud-agent_cli.exe")
-    else:
-        agent = str(Path(pytestconfig.rootdir) / "arduino-cloud-agent")
-    env = {
-        # "ARDUINO_DATA_DIR": data_dir,
-        # "ARDUINO_DOWNLOADS_DIR": downloads_dir,
-        # "ARDUINO_SKETCHBOOK_DIR": data_dir,
-    }
-    run_context = Context()
+def agent(pytestconfig, tmp_path):
+    repository = Path(pytestconfig.rootpath)
+    binary_name = "arduino-cloud-agent_cli.exe" if platform.system() == "Windows" else "arduino-cloud-agent_cli"
+    source = Path(os.environ.get("ARDUINO_AGENT_TEST_BINARY", repository / binary_name))
+    if not source.is_file():
+        pytest.fail("Build the CLI agent before integration tests, or set ARDUINO_AGENT_TEST_BINARY.")
 
-    runner = Local(run_context) # execute a command on the local filesystem
-    
-    cd_command = "cd"
-    with run_context.prefix(f'{cd_command} ..'):
-        runner.run(agent, echo=True, hide=True, warn=True, env=env, asynchronous=True)
-        
-        # we give some time to the agent to start and listen to
-        # incoming requests
-        time.sleep(1)
+    _require_available_test_port()
 
-        # we block here until the test function using this fixture has returned
-        yield runner
-
-    # Kill the runner's process as we finished our test (platform dependent)
-    os_signal = signal.SIGTERM
-    if platform.system() != "Windows":
-        os_signal = signal.SIGKILL
-    os.kill(runner.process.pid, os_signal)
+    # Startup prepares a sibling update copy. Keep both executables in the test
+    # directory, and disable update requests and OS integration in the config.
+    binary = tmp_path / binary_name
+    shutil.copy2(source, binary)
+    config = tmp_path / "config.ini"
+    config.write_text(
+        "address = 127.0.0.1\n"
+        "gc = std\n"
+        "v = true\n"
+        "crashreport = false\n"
+        "autostartMacOS = false\n"
+        "installCerts = false\n"
+        "origins = http://127.0.0.1:8991\n"
+        "appName =\n"
+        "updateUrl =\n",
+        encoding="utf-8",
+    )
+    environment = dict(os.environ)
+    environment.update({
+        "ARDUINO_CREATE_AGENT_CONFIG": str(config),
+        "ARDUINO_CREATE_AGENT_DATA_DIR": str(tmp_path / "data"),
+        "ARDUINO_CREATE_AGENT_CONFIG_DIR": str(tmp_path / "config"),
+    })
+    log_path = tmp_path / "agent.log"
+    with log_path.open("wb") as output:
+        process = subprocess.Popen(
+            [str(binary), "-additional-config", str(config)],
+            cwd=repository, env=environment, stdin=subprocess.DEVNULL,
+            stdout=output, stderr=subprocess.STDOUT,
+        )
+        try:
+            deadline = time.monotonic() + 45
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    pytest.fail(f"Agent exited during startup (exit {process.returncode}); see {log_path}.")
+                connection = HTTPConnection("127.0.0.1", 8991, timeout=1)
+                try:
+                    connection.request("GET", "/info")
+                    response = connection.getresponse()
+                    response.read()
+                    if response.status == 200:
+                        break
+                except OSError:
+                    pass
+                finally:
+                    connection.close()
+                time.sleep(0.1)
+            else:
+                pytest.fail(f"Agent did not become ready within 45 seconds; see {log_path}.")
+            yield process
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
 
 
 @pytest.fixture(scope="session")
@@ -63,13 +127,19 @@ def base_url():
 
 @pytest.fixture(scope="function")
 def socketio(base_url, agent):
-    sio = io.Client()
-    sio.connect(base_url)
-    yield sio
-    sio.disconnect()
+    with requests.Session() as session:
+        session.trust_env = False
+        sio = io.Client(reconnection=False, http_session=session)
+        try:
+            sio.connect(base_url, transports=["websocket"])
+            yield sio
+        finally:
+            sio.disconnect()
 
 @pytest.fixture(scope="session")
 def serial_port():
+    if os.environ.get("ARDUINO_AGENT_HARDWARE_TESTS") != "1":
+        pytest.skip("set ARDUINO_AGENT_HARDWARE_TESTS=1 to enable serial hardware tests")
     return "/dev/ttyACM0" # maybe this could be enhanced by calling arduino-cli
 
 @pytest.fixture(scope="session")

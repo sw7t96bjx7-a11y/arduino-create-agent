@@ -16,7 +16,7 @@
 package upload
 
 import (
-	"log"
+	"os"
 	"strings"
 	"testing"
 
@@ -43,6 +43,13 @@ var TestSerialData = []struct {
 }
 
 func TestSerial(t *testing.T) {
+	if testing.Short() {
+		t.Skip("hardware upload test is disabled in short mode")
+	}
+	if os.Getenv("ARDUINO_AGENT_HARDWARE_TESTS") != "1" {
+		t.Skip("set ARDUINO_AGENT_HARDWARE_TESTS=1 to enable the Leonardo hardware upload test")
+	}
+
 	logger := logrus.New()
 	logger.Level = logrus.DebugLevel
 
@@ -51,7 +58,9 @@ func TestSerial(t *testing.T) {
 	for _, test := range TestSerialData {
 		commandline := strings.Replace(test.Commandline, "$HOME", home, -1)
 		err := Serial(test.Port, commandline, test.Extra, logger)
-		log.Println(err)
+		if err != nil {
+			t.Errorf("%s upload failed: %v", test.Name, err)
+		}
 	}
 }
 

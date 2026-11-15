@@ -1,0 +1,4 @@
+# Existing custom label used by the release signing job.
+self-hosted-runner:
+  labels:
+    - windows-sign-pc

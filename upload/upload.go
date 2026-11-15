@@ -17,11 +17,13 @@ package upload
 
 import (
 	"bufio"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/arduino/arduino-create-agent/utilities"
 	serialutils "github.com/arduino/go-serial-utils"
@@ -98,14 +100,23 @@ func Serial(port, commandline string, extra Extra, l Logger) error {
 	return program(z[0], z[1:], l)
 }
 
-var cmds = map[*exec.Cmd]bool{}
+var (
+	cmdsMu sync.Mutex
+	cmds   = make(map[*os.Process]struct{})
+)
 
 // Kill stops any upload process as soon as possible
 func Kill() {
-	for cmd := range cmds {
-		if cmd.Process.Pid > 0 {
-			cmd.Process.Kill()
-		}
+	cmdsMu.Lock()
+	processes := make([]*os.Process, 0, len(cmds))
+	for process := range cmds {
+		processes = append(processes, process)
+	}
+	cmdsMu.Unlock()
+
+	for _, process := range processes {
+		// The process may have exited since the snapshot was taken.
+		_ = process.Kill()
 	}
 }
 
@@ -143,12 +154,6 @@ func program(binary string, args []string, l Logger) error {
 
 	cmd := exec.Command(binary, args...)
 
-	// Add the command to the map of running commands
-	cmds[cmd] = true
-	defer func() {
-		delete(cmds, cmd)
-	}()
-
 	utilities.TellCommandNotToSpawnShell(cmd)
 
 	stdout, err := cmd.StdoutPipe()
@@ -163,10 +168,22 @@ func program(binary string, args []string, l Logger) error {
 
 	info(l, "Flashing with command:"+binary+extension+" "+strings.Join(args, " "))
 
+	// Start and register atomically with respect to Kill. Only successfully
+	// started processes are visible, so Kill never observes a nil Process.
+	cmdsMu.Lock()
 	err = cmd.Start()
+	if err == nil {
+		cmds[cmd.Process] = struct{}{}
+	}
+	cmdsMu.Unlock()
 	if err != nil {
 		return errors.Wrapf(err, "Start command")
 	}
+	defer func() {
+		cmdsMu.Lock()
+		delete(cmds, cmd.Process)
+		cmdsMu.Unlock()
+	}()
 
 	stdoutCopy := bufio.NewScanner(stdout)
 	stderrCopy := bufio.NewScanner(stderr)

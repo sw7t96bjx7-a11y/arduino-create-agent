@@ -9,7 +9,7 @@ on:
         required: true
         default: 'example.com'
       check_cloudflare:
-        description: 'Optional read-only zone access check (requires CF_API_TOKEN secret)'
+        description: 'Optional zone check using the cloudflare-audit environment'
         type: boolean
         required: true
         default: false
@@ -18,137 +18,67 @@ permissions:
   contents: read
 
 jobs:
-  audit:
+  public_dns:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
+      - name: Checkout audit code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
       - name: Validate domain input
         env:
           DOMAINS_INPUT: ${{ inputs.domains }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os
-          import re
-          import sys
-          from pathlib import Path
-
-          raw = os.environ.get('DOMAINS_INPUT', '')
-          pieces = raw.split(',')
-          domains = []
-          for piece in pieces:
-              name = piece.strip().lower().rstrip('.')
-              labels = name.split('.')
-              if (
-                  not name
-                  or len(name) > 253
-                  or len(labels) < 2
-                  or name.endswith(('.local', '.internal', '.test', '.invalid'))
-                  or any(not re.fullmatch(r'(?!-)[a-z0-9-]{1,63}(?<!-)', label)
-                         for label in labels)
-                  or labels[-1].isdigit()
-              ):
-                  sys.exit('Invalid public hostname input; supply only comma-separated DNS names.')
-              if name not in domains:
-                  domains.append(name)
-          if not 1 <= len(domains) <= 8:
-              sys.exit('Supply between 1 and 8 distinct domains.')
-          Path('domains.txt').write_text('\n'.join(domains) + '\n', encoding='ascii')
-          print(f'Validated {len(domains)} domain(s) for read-only checks.')
-          PY
+        run: python3 scripts/dns_audit.py validate
 
       - name: Install DNS query tool
         run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils
 
       - name: Collect public DNS records
         id: collect
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p reports/public
-          while IFS= read -r domain; do
-            {
-              printf '# Public DNS snapshot: %s\n' "$domain"
-              for rrtype in NS A AAAA CNAME MX CAA; do
-                printf '\n## %s\n' "$rrtype"
-                dig +short +time=5 +tries=2 "$domain" "$rrtype" || true
-              done
-              printf '\n## www CNAME\n'
-              dig +short +time=5 +tries=2 "www.$domain" CNAME || true
-              printf '\n## DMARC TXT record count (content excluded)\n'
-              dig +short +time=5 +tries=2 "_dmarc.$domain" TXT | wc -l || true
-              printf '\n## SPF/TXT record count (content excluded)\n'
-              dig +short +time=5 +tries=2 "$domain" TXT | wc -l || true
-            } > "reports/public/$domain.txt"
-          done < domains.txt
-          printf '### Read-only DNS audit\n' >> "$GITHUB_STEP_SUMMARY"
-          printf 'Validated domain count: %s\n' "$(wc -l < domains.txt)" >> "$GITHUB_STEP_SUMMARY"
-          printf '\nPublic DNS snapshots are available as a short-lived artifact.\n' >> "$GITHUB_STEP_SUMMARY"
+        continue-on-error: true
+        env:
+          DOMAINS_INPUT: ${{ inputs.domains }}
+        run: python3 scripts/dns_audit.py public
 
-      - name: Upload public DNS report only
-        uses: actions/upload-artifact@v4
+      - name: Upload public DNS report
+        if: ${{ !cancelled() && (steps.collect.outcome == 'success' || steps.collect.outcome == 'failure') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: public-dns-audit
           path: reports/public/
           if-no-files-found: error
           retention-days: 3
 
-      - name: Optional Cloudflare access and record-count check
-        if: ${{ inputs.check_cloudflare }}
-        env:
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-        shell: bash
+      - name: Report failed DNS queries
+        if: ${{ !cancelled() && steps.collect.outcome == 'failure' }}
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          import sys
-          from pathlib import Path
-          from urllib.error import HTTPError, URLError
-          from urllib.parse import urlencode
-          from urllib.request import Request, urlopen
+          echo '::error::One or more DNS queries failed. Review the public DNS artifact for per-query status.'
+          exit 1
 
-          token = os.environ.get('CF_API_TOKEN', '')
-          if not token:
-              sys.exit('Cloudflare check requested, but CF_API_TOKEN is not configured.')
+  cloudflare:
+    if: ${{ inputs.check_cloudflare }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: cloudflare-audit
+    steps:
+      - name: Require the reviewed main branch
+        env:
+          AUDIT_REF: ${{ github.ref }}
+        run: |
+          if [ "$AUDIT_REF" != 'refs/heads/main' ]; then
+            echo '::error::The Cloudflare check is restricted to the reviewed main branch. Run the public DNS audit with the Cloudflare option disabled on other branches.'
+            exit 1
+          fi
 
-          def read_api(url):
-              request = Request(url, headers={
-                  'Authorization': 'Bearer ' + token,
-                  'Accept': 'application/json',
-              }, method='GET')
-              try:
-                  with urlopen(request, timeout=20) as response:
-                      data = json.load(response)
-              except HTTPError as exc:
-                  sys.exit(f'Cloudflare API returned HTTP {exc.code}; verify token scope.')
-              except (URLError, ValueError, TimeoutError):
-                  sys.exit('Cloudflare API request failed; check connectivity and response format.')
-              if not isinstance(data, dict) or data.get('success') is not True:
-                  sys.exit('Cloudflare API indicated an error; check read-only token permissions.')
-              return data
+      - name: Checkout audit code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-          summary = Path(os.environ['GITHUB_STEP_SUMMARY'])
-          with summary.open('a', encoding='utf-8') as output:
-              output.write('\n### Cloudflare read-only API check\n')
-              output.write('| Domain | Zone visible | DNS record count |\n')
-              output.write('|---|---|---:|\n')
-              for domain in Path('domains.txt').read_text(encoding='ascii').splitlines():
-                  url = 'https://api.cloudflare.com/client/v4/zones?' + urlencode({'name': domain})
-                  zone_response = read_api(url)
-                  matched = [zone for zone in zone_response.get('result', [])
-                             if zone.get('name') == domain]
-                  if not matched:
-                      output.write(f'| {domain} | No (or unauthorized) | n/a |\n')
-                      continue
-                  zone_id = matched[0]['id']
-                  records = read_api(
-                      f'https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?per_page=5')
-                  count = records.get('result_info', {}).get('total_count')
-                  if count is None:
-                      sys.exit('Cloudflare response omitted DNS record count; check API changes.')
-                  output.write(f'| {domain} | Yes | {int(count)} |\n')
-          print('Cloudflare read-only check complete; raw zone data and tokens were not published.')
-          PY
+      - name: Check Cloudflare zone access and record counts
+        env:
+          DOMAINS_INPUT: ${{ inputs.domains }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: python3 scripts/dns_audit.py cloudflare

@@ -3,7 +3,6 @@ name: Sync Labels
 
 permissions:
   contents: read
-  issues: write
 
 # See: https://docs.github.com/en/actions/reference/events-that-trigger-workflows
 on:
@@ -31,11 +30,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Download JSON schema for labels configuration file
         id: download-schema
-        uses: carlosperate/download-file-action@v2
+        uses: carlosperate/download-file-action@7021d227a45dcf2f828612344b03f6f09a4f7cad # v2
         with:
           file-url: https://raw.githubusercontent.com/arduino/tooling-project-assets/main/workflow-templates/assets/sync-labels/arduino-tooling-gh-label-configuration-schema.json
           location: ${{ runner.temp }}/label-configuration-schema
@@ -70,12 +71,12 @@ jobs:
 
     steps:
       - name: Download
-        uses: carlosperate/download-file-action@v2
+        uses: carlosperate/download-file-action@7021d227a45dcf2f828612344b03f6f09a4f7cad # v2
         with:
           file-url: https://raw.githubusercontent.com/arduino/tooling-project-assets/main/workflow-templates/assets/sync-labels/${{ matrix.filename }}
 
       - name: Pass configuration files to next job via workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           path: |
             *.yaml
@@ -84,6 +85,10 @@ jobs:
           name: ${{ env.CONFIGURATIONS_ARTIFACT }}-${{ matrix.filename }}
 
   sync:
+    permissions:
+      contents: read
+      issues: write
+      actions: write
     needs: download
     runs-on: ubuntu-latest
 
@@ -110,19 +115,21 @@ jobs:
           echo "flag=--dry-run" >> $GITHUB_OUTPUT
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Download configuration files artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: ${{ env.CONFIGURATIONS_ARTIFACT }}-* # Download all configuration files
           path: ${{ env.CONFIGURATIONS_FOLDER }}
           merge-multiple: true
 
       - name: Remove unneeded artifact
-        uses: geekyeggo/delete-artifact@v5
+        uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5
         with:
-          name: ${{ env.CONFIGURATIONS_ARTIFACT }}
+          name: ${{ env.CONFIGURATIONS_ARTIFACT }}-*
 
       - name: Merge label configuration files
         run: |
@@ -134,10 +141,8 @@ jobs:
         run: sudo npm install --global github-label-sync
 
       - name: Sync labels
-        # Use LABEL_SYNC_PAT secret if present, otherwise fall back to the built-in GITHUB_TOKEN.
-        # Create a repo secret named LABEL_SYNC_PAT if you need a PAT for cross-repo or app contexts.
         env:
-          GITHUB_ACCESS_TOKEN: ${{ secrets.LABEL_SYNC_PAT || github.token }}
+          GITHUB_ACCESS_TOKEN: ${{ github.token }}
         run: |
           # See: https://github.com/Financial-Times/github-label-sync
           github-label-sync \

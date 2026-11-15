@@ -43,7 +43,7 @@ var (
 	rsaBits   = 2048
 )
 
-func publicKey(priv interface{}) interface{} {
+func publicKey(priv any) any {
 	switch k := priv.(type) {
 	case *rsa.PrivateKey:
 		return &k.PublicKey
@@ -54,7 +54,7 @@ func publicKey(priv interface{}) interface{} {
 	}
 }
 
-func pemBlockForKey(priv interface{}) *pem.Block {
+func pemBlockForKey(priv any) *pem.Block {
 	switch k := priv.(type) {
 	case *rsa.PrivateKey:
 		return &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}
@@ -70,7 +70,7 @@ func pemBlockForKey(priv interface{}) *pem.Block {
 	}
 }
 
-func generateKey(ecdsaCurve string) (interface{}, error) {
+func generateKey(ecdsaCurve string) (any, error) {
 	switch ecdsaCurve {
 	case "":
 		return rsa.GenerateKey(rand.Reader, rsaBits)
