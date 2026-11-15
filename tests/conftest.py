@@ -27,16 +27,19 @@ import requests
 import socketio as io
 
 
-@pytest.fixture(scope="function")
-def agent(pytestconfig, tmp_path):
-    repository = Path(pytestconfig.rootpath)
-    binary_name = "arduino-cloud-agent_cli.exe" if platform.system() == "Windows" else "arduino-cloud-agent_cli"
-    source = Path(os.environ.get("ARDUINO_AGENT_TEST_BINARY", repository / binary_name))
-    if not source.is_file():
-        pytest.fail("Build the CLI agent before integration tests, or set ARDUINO_AGENT_TEST_BINARY.")
-
+def _require_available_test_port():
     # Refuse to attach tests to an already-running agent on the fixed test port.
     with socket.socket() as probe:
+        if platform.system() == "Windows":
+            # Windows may take longer than our timeout to refuse a connection
+            # to a free port. An exclusive bind checks availability directly.
+            try:
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+                probe.bind(("127.0.0.1", 8991))
+            except OSError:
+                pytest.fail("Port 8991 is unavailable; refusing to test an unrelated process.")
+            return
+
         probe.settimeout(1)
         try:
             probe.connect(("127.0.0.1", 8991))
@@ -46,6 +49,17 @@ def agent(pytestconfig, tmp_path):
             pytest.fail("Could not verify that the loopback test port is available.")
         else:
             pytest.fail("Port 8991 is already in use; refusing to test an unrelated process.")
+
+
+@pytest.fixture(scope="function")
+def agent(pytestconfig, tmp_path):
+    repository = Path(pytestconfig.rootpath)
+    binary_name = "arduino-cloud-agent_cli.exe" if platform.system() == "Windows" else "arduino-cloud-agent_cli"
+    source = Path(os.environ.get("ARDUINO_AGENT_TEST_BINARY", repository / binary_name))
+    if not source.is_file():
+        pytest.fail("Build the CLI agent before integration tests, or set ARDUINO_AGENT_TEST_BINARY.")
+
+    _require_available_test_port()
 
     # Startup prepares a sibling update copy. Keep both executables in the test
     # directory, and disable update requests and OS integration in the config.
